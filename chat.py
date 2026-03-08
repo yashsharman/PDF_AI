@@ -11,14 +11,6 @@ embeddings_model = OpenAIEmbeddings(
     model="text-embedding-3-large",
 )
 
-# vector_db = QdrantVectorStore.from_existing_collection(
-#     embedding=embeddings_model,
-#     url="http://localhost:6333",
-#     collection_name="learnin g_rag",)
-
-#take user input
-# user_query = input("Enter your question: ")
-#returns relavent chunks from the vector store based on the user query
 
 async def find_relevant_chunks(user_query: str, vector_db: QdrantVectorStore, k: int = 3, username: str = None) -> str:
 

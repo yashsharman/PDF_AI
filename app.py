@@ -1,3 +1,4 @@
+import os
 import logging
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -11,6 +12,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings
 from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
+from qdrant_client.http.models import PayloadSchemaType
 from openai import OpenAI
 from pydantic import BaseModel
 
@@ -21,13 +23,30 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-QDRANT_URL = "https://7fe14b6f-1d8c-4f45-b837-9993dcd8a1a9.us-east4-0.gcp.cloud.qdrant.io:6333"
-QDRANT_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3MiOiJtIn0.rcdI89QMqiv8A3yaRA8VCazPKYcqWd4tyEwWHqGxW9U"
+
+
+QDRANT_URL = os.getenv("QDRANT_URL")
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 
 qdrant_client = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
 
 
 app = FastAPI(title="PDF RAG API", version="0.1.0")
+
+
+@app.on_event("startup")
+def _ensure_payload_indexes():
+    try:
+        qdrant_client.create_payload_index(
+            collection_name=COLLECTION_NAME,
+            field_name="metadata.username",
+            field_schema=PayloadSchemaType.KEYWORD,
+        )
+        logger.info("Payload index on 'metadata.username' ensured.")
+    except Exception as exc:
+        # Index may already exist or collection may not exist yet — both are fine
+        logger.debug("Payload index creation skipped: %s", exc)
+
 
 # Open CORS so the API can be called from any origin (frontend/dev tools).
 app.add_middleware(
@@ -134,6 +153,16 @@ async def upload_files(username: str = Form(...), files: List[UploadFile] = File
             collection_name=COLLECTION_NAME,
         )
         logger.info("Created new collection '%s' with %s chunks", COLLECTION_NAME, len(all_chunks))
+
+    # Ensure the payload index exists so username-filtered queries work
+    try:
+        qdrant_client.create_payload_index(
+            collection_name=COLLECTION_NAME,
+            field_name="metadata.username",
+            field_schema=PayloadSchemaType.KEYWORD,
+        )
+    except Exception:
+        pass  # Already exists
 
     return {"indexed_chunks": len(all_chunks), "collection": COLLECTION_NAME}
 
