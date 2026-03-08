@@ -9,3 +9,4 @@ python-dotenv==1.2.1
 python-multipart==0.0.22
 qdrant-client==1.16.2
 uvicorn==0.40.0
+pypdf==6.7.0
