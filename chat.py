@@ -15,26 +15,48 @@ embeddings_model = OpenAIEmbeddings(
 async def find_relevant_chunks(
     user_query: str,
     vector_db: QdrantVectorStore,
-    k: int = 3,
-    username: str = None,
-    file_names: list = None,
-) -> str:
-    must_conditions = [
+    username: str | None = None,
+    file_names: list[str] | None = None,
+    doc_ids: list[str] | None = None,
+    per_doc_k: int = 5,
+    fallback_k: int = 8,
+):
+    """Run filtered similarity search with optional per-document capping.
+
+    Filters always scope to username and optionally to doc_ids and file_names.
+    When file_names are provided, each document is searched independently with
+    a fixed top-k so no single document dominates. Otherwise a broader search
+    across the user's corpus (still constrained by doc_ids if provided) is performed.
+    """
+
+    base_filter = [
         {
             "key": "metadata.username",
             "match": {"value": username},
         }
     ]
-    if file_names:
-        must_conditions.append(
-            {
-                "key": "metadata.file_name",
-                "match": {"any": file_names},
-            }
-        )
 
-    search_results = vector_db.similarity_search(
-        user_query, k=k, filter={"must": must_conditions}
+    if doc_ids:
+        base_filter.append({"key": "metadata.doc_id", "match": {"any": list(dict.fromkeys(doc_ids))}})
+
+    if file_names:
+        results: list = []
+        for name in dict.fromkeys(file_names):  # preserve order, drop dupes
+            filter_clause = {
+                "must": base_filter
+                + [
+                    {
+                        "key": "metadata.file_name",
+                        "match": {"value": name},
+                    }
+                ]
+            }
+            doc_hits = vector_db.similarity_search(user_query, k=per_doc_k, filter=filter_clause)
+            results.extend(doc_hits)
+        return results
+
+    return vector_db.similarity_search(
+        user_query,
+        k=fallback_k,
+        filter={"must": base_filter},
     )
-    print(f"Search results: {search_results}")
-    return search_results
